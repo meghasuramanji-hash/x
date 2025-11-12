@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Smart Health Management System</title>
+
+  <!-- If you already have style.css keep it, otherwise this internal CSS will style things -->
+  <style>
+    /* ------------------- base (keeps your chart area intact) ------------------- */
+    body { font-family: Arial, sans-serif; background: #eef3f7; margin:0; padding:0; }
+    .wrapper { width:90%; margin:auto; padding:20px; }
+    h1 { text-align:center; font-size:28px; margin-bottom:20px; }
+
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:30px; align-items:start; }
+
+    .box { background:white; padding:20px; border-radius:10px; box-shadow:0 0 10px #ccc; }
+    input[type="text"], input { width:100%; padding:10px; margin:8px 0; font-size:16px; border-radius:6px; border:1px solid #ccc; box-sizing:border-box; }
+
+    button { cursor:pointer; }
+
+    .chart-container { background:white; padding:15px; border-radius:10px; box-shadow:0 0 8px #ccc; margin-top:20px; }
+    canvas { width:100% !important; height:300px !important; }
+
+    /* ------------------- AI Doctor floating button ------------------- */
+    .doctor-btn {
+      position: fixed;
+      right: 24px;
+      bottom: 20px;
+      background:#0b74e6;
+      color:white;
+      padding:12px 18px;
+      border-radius:10px;
+      border:none;
+      box-shadow:0 6px 14px rgba(11,116,230,0.25);
+      z-index:9998;
+      font-weight:600;
+    }
+
+    /* ------------------- Chat popup ------------------- */
+    .doctor-chat-popup {
+      position: fixed;
+      right: 24px;
+      bottom: 80px;
+      width: 360px;
+      max-width: calc(100% - 40px);
+      height: 520px;
+      background: white;
+      border-radius:12px;
+      box-shadow:0 10px 30px rgba(0,0,0,0.15);
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      z-index:9999;
+    }
+
+    .doctor-header {
+      background:#0b74e6;
+      color:#fff;
+      padding:12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .doctor-header .left { display:flex; gap:10px; align-items:center; }
+    .doctor-avatar { width:40px; height:40px; border-radius:50%; background:#fff; padding:4px; }
+
+    .chat-window {
+      flex:1;
+      padding:12px;
+      overflow-y:auto;
+      background:#f7f9fb;
+      font-size:14px;
+      line-height:1.4;
+    }
+
+    .typing-area { padding:6px 12px; display:none; background:#fbfdff; align-items:center; }
+    .typing-gif { width:28px; height:28px; }
+
+    .chat-window .bot-msg, .chat-window .user-msg {
+      margin:8px 0;
+      display:block;
+      max-width:100%;
+    }
+    .chat-window .bot-msg span {
+      display:inline-block; background:#eef3f0; padding:10px 12px; border-radius:10px; color:#0b3b2e;
+    }
+    .chat-window .user-msg { text-align:right; }
+    .chat-window .user-msg span { display:inline-block; background:#0b74e6; color:white; padding:10px 12px; border-radius:10px; }
+
+    .input-area { display:flex; gap:8px; padding:12px; border-top:1px solid #eee; align-items:center; }
+    .input-area input { flex:1; padding:10px; border-radius:8px; border:1px solid #ddd; }
+    .input-area .send-btn { background:#0b74e6; color:white; border:none; padding:10px 14px; border-radius:8px; }
+    .input-area .voice-btn { background:#2eb85c; color:white; border:none; padding:10px 12px; border-radius:8px; }
+
+    /* symptom chips row (neat) */
+    .symptom-chips { display:flex; gap:8px; padding:10px; overflow-x:auto; border-top:1px solid #f0f0f0; background:#fff; }
+    .chip { background:#eff6ff; color:#0b4fc6; padding:8px 12px; border-radius:20px; border:none; white-space:nowrap; cursor:pointer; font-weight:600; box-shadow: 0 2px 6px rgba(11,116,230,0.08); }
+
+    /* emergency panel inside chat */
+    .emergency-panel { padding:12px; border-top:1px solid #f0f0f0; background:#fff; display:flex; gap:8px; flex-direction:column; }
+    .emergency-panel .emergency-call {
+      background: linear-gradient(90deg,#ff4d4f,#ff6666);
+      color:white; border:none; padding:12px; border-radius:10px; font-weight:700;
+      display:flex; gap:10px; align-items:center; justify-content:center;
+    }
+    .emergency-panel .secondary { background:#0b74e6; color:white; padding:10px; border-radius:8px; font-weight:600; border:none; }
+
+    /* small utilities */
+    .small-muted { color:#666; font-size:12px; margin-top:6px; }
+    .hr { height:1px; background:#f0f0f0; margin:6px 0; }
+  </style>
+
+  <!-- Chart.js (keep if you use charts) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <div class="wrapper">
+    <h1>Smart Health Management System - Elderly Care</h1>
+
+    <div class="grid">
+      <!-- LEFT: form -->
+      <div class="box">
+        <h2>Enter Health Details</h2>
+        <input id="name" type="text" placeholder="Patient Name" />
+        <input id="bp" type="text" placeholder="Blood Pressure e.g., 120/80" />
+        <input id="sugar" type="text" placeholder="Sugar Level e.g., 90" />
+        <input id="pulse" type="text" placeholder="Pulse Rate e.g., 70" />
+
+        <div style="display:flex;gap:12px;margin-top:10px;">
+          <button onclick="saveData()" style="flex:1;background:#0b74e6;color:#fff;border:none;padding:12px;border-radius:8px;">Save</button>
+          <button onclick="loadData()" style="flex:1;background:#0b74e6;color:#fff;border:none;padding:12px;border-radius:8px;">Load Records</button>
+        </div>
+
+        <h2 style="margin-top:18px;">Saved Records</h2>
+        <ul id="recordList" style="padding-left:18px;"></ul>
+      </div>
+
+      <!-- RIGHT: charts -->
+      <div>
+        <div class="chart-container">
+          <h3>Blood Pressure Chart</h3>
+          <canvas id="bpChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+          <h3>Sugar Level Chart</h3>
+          <canvas id="sugarChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+          <h3>Pulse Rate Chart</h3>
+          <canvas id="pulseChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+          <h3>Overall Comparison Chart</h3>
+          <canvas id="compareChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating button to open chat -->
+  <button class="doctor-btn" onclick="openDoctorChat()" aria-label="Open AI Doctor">🤖 AI Doctor</button>
+
+  <!-- Chat popup -->
+  <div id="doctorChat" class="doctor-chat-popup" aria-hidden="true">
+    <div class="doctor-header">
+      <div class="left">
+        <img src="https://cdn-icons-png.flaticon.com/512/387/387561.png" class="doctor-avatar" alt="doctor" />
+        <div>
+          <div style="font-weight:700">AI Doctor Bot</div>
+          <div style="font-size:12px;opacity:.9">Virtual triage & friendly advice</div>
+        </div>
+      </div>
+      <div>
+        <button class="close-btn" style="background:transparent;border:none;color:#fff;font-size:18px;" onclick="closeDoctorChat()">✖</button>
+      </div>
+    </div>
+
+    <div id="chatWindow" class="chat-window" aria-live="polite">
+      <!-- initial greeting -->
+      <div class="bot-msg"><span>Hello! I'm your AI doctor assistant — tell me a symptom or press the microphone to speak. If urgent, use the Emergency button below.</span></div>
+    </div>
+
+    <div id="typingIndicator" class="typing-area"><img src="https://i.gifer.com/YCZH.gif" class="typing-gif" alt="typing" /></div>
+
+    <!-- symptom chips (neat aligned) -->
+    <div class="symptom-chips" id="symptomChips" aria-hidden="false">
+      <!-- chips inserted by JS -->
+    </div>
+
+    <!-- input area -->
+    <div class="input-area" role="form" aria-label="Chat input">
+      <button id="voiceBtn" class="voice-btn" title="Speak" onclick="startVoiceInput()">🎤</button>
+      <input id="userMessage" type="text" placeholder="Describe your problem..." aria-label="Type a message" onkeydown="if(event.key==='Enter'){ sendMessageToBot(); }" />
+      <button id="sendBtn" class="send-btn" title="Send" onclick="sendMessageToBot()">Send</button>
+    </div>
+
+    <!-- emergency panel (inside chat) -->
+    <div class="emergency-panel">
+      <div class="small-muted">Emergency quick actions</div>
+      <div style="display:flex;gap:8px;">
+        <button class="emergency-call" onclick="emergencyCall()">🚑 Call Ambulance (108)</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="secondary" onclick="callCaregiver()">📞 Call Caregiver</button>
+        <button class="secondary" onclick="sendEmergencySms()">✉️ Send Emergency SMS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script: charts + bot -->
+  <script>
+    /* -------------------------
+       Basic storage & charts (keeps your previous logic compatible)
+       ------------------------- */
+    function saveData() {
+      const name = document.getElementById("name")?.value || "";
+      const bp = document.getElementById("bp")?.value || "";
+      const sugar = document.getElementById("sugar")?.value || "";
+      const pulse = document.getElementById("pulse")?.value || "";
+      const rec = { name, bp, sugar, pulse, ts: Date.now() };
+      const arr = JSON.parse(localStorage.getItem("healthRecords") || "[]");
+      arr.push(rec);
+      localStorage.setItem("healthRecords", JSON.stringify(arr));
+      alert("Record saved!");
+      loadData();
+    }
+
+    function loadData() {
+      const arr = JSON.parse(localStorage.getItem("healthRecords") || "[]");
+      const list = document.getElementById("recordList");
+      if (list) {
+        list.innerHTML = "";
+        arr.forEach(r => {
+          const li = document.createElement("li");
+          li.textContent = `${r.name} — BP: ${r.bp}, Sugar: ${r.sugar}, Pulse: ${r.pulse}`;
+          list.appendChild(li);
+        });
+      }
+      try { generateCharts(arr); } catch(e){ console.warn(e); }
+    }
+
+    // Simple helper chart generation (uses Chart.js if present)
+    let bpChart, sugarChart, pulseChart, compareChart;
+    function safeInt(x){ const n = parseInt(String(x||"").replace(/[^\d]/g,""),10); return isNaN(n)?0:n; }
+    function parseBP(b){ if(!b) return [0,0]; const p=b.split("/"); return [safeInt(p[0]), safeInt(p[1])]; }
+    function generateCharts(records){
+      if(typeof Chart === "undefined") return;
+      if(!records || records.length===0){
+        // nothing to show
+        return;
+      }
+      const names = records.map(r=>r.name||"P");
+      const sugar = records.map(r=>safeInt(r.sugar));
+      const pulse = records.map(r=>safeInt(r.pulse));
+      const sys = records.map(r=>parseBP(r.bp)[0]);
+      const dia = records.map(r=>parseBP(r.bp)[1]);
+      // destroy old
+      try { bpChart && bpChart.destroy(); } catch(e){}
+      try { sugarChart && sugarChart.destroy(); } catch(e){}
+      try { pulseChart && pulseChart.destroy(); } catch(e){}
+      try { compareChart && compareChart.destroy(); } catch(e){}
+      const bpCtx = document.getElementById("bpChart");
+      if(bpCtx) bpChart = new Chart(bpCtx, { type:'bar', data:{ labels:names, datasets:[{label:'Systolic', data:sys, backgroundColor:'rgba(59,130,246,0.7)'},{label:'Diastolic', data:dia, backgroundColor:'rgba(252,165,165,0.8)'}] }, options:{responsive:true, maintainAspectRatio:false} });
+      const sugarCtx = document.getElementById("sugarChart");
+      if(sugarCtx) sugarChart = new Chart(sugarCtx, { type:'line', data:{ labels:names, datasets:[{label:'Sugar', data:sugar, borderColor:'#0b74e6', fill:false}] }, options:{responsive:true, maintainAspectRatio:false} });
+      const pulseCtx = document.getElementById("pulseChart");
+      if(pulseCtx) pulseChart = new Chart(pulseCtx, { type:'pie', data:{ labels:names, datasets:[{data:pulse}] }, options:{responsive:true, maintainAspectRatio:false} });
+      const compareCtx = document.getElementById("compareChart");
+      if(compareCtx) compareChart = new Chart(compareCtx, { type:'radar', data:{ labels:['BP Sys','BP Dia','Sugar','Pulse'], datasets:records.map((r,i)=>({ label:r.name||('P'+(i+1)), data:[ parseBP(r.bp)[0], parseBP(r.bp)[1], safeInt(r.sugar), safeInt(r.pulse) ] })) }, options:{responsive:true, maintainAspectRatio:false} });
+    }
+
+    /* -------------------------
+       AI Doctor Bot logic
+       ------------------------- */
+    const CAREGIVER_NUMBER = "8197711824"; // change to caregiver number you want
+    const AMBULANCE_NUMBER = "108";
+
+    const SYMPTOMS = {
+      // common elderly symptoms + realistic advice & medicines
+      "fever": { advice:"Keep hydrated, rest, monitor temperature. If >39°C seek care.", meds:"Paracetamol 500 mg (as per package)" },
+      "headache": { advice:"Rest in a quiet, dim room, hydrate, avoid screens.", meds:"Paracetamol / Ibuprofen (as appropriate)" },
+      "cold": { advice:"Steam inhalation and saline nasal drops. Rest and fluids.", meds:"Antihistamine (if sneezing)" },
+      "cough": { advice:"Stay hydrated; honey for adults; see doctor if persistent.", meds:"Dextromethorphan or expectorant as appropriate" },
+      "vomiting": { advice:"Small sips of ORS, avoid solid food until settled.", meds:"Antiemetic if prescribed" },
+      "dizziness": { advice:"Sit/lie down, measure BP & sugar, hydrate.", meds:"Treat underlying cause; see physician" },
+      "breath": { advice:"Sit upright, try slow breathing; if severe call emergency.", meds:"Bronchodilator if previously prescribed" },
+      "chest pain": { advice:"Possible emergency — call immediately.", meds:"Immediate medical care required", emergency:true },
+      "faint": { advice:"Lay flat, raise legs, check response; call emergency if unresponsive.", meds:"Emergency care", emergency:true },
+      "arthritis": { advice:"Gentle movement, heat pack, rest; consult for long-term management.", meds:"Paracetamol or anti-inflammatory if prescribed" },
+      "urine": { advice:"If burning or unable to pass urine, seek medical attention.", meds:"Depends on diagnosis (see doctor)" },
+      "confusion": { advice:"Stay with patient, check BP/sugar, seek urgent review.", meds:"Urgent assessment" }
+    };
+
+    function addBotBubble(html){
+      const w = document.getElementById("chatWindow");
+      const d = document.createElement("div");
+      d.className = "bot-msg";
+      d.innerHTML = "<span>"+html+"</span>";
+      w.appendChild(d);
+      w.scrollTop = w.scrollHeight;
+    }
+    function addUserBubble(text){
+      const w = document.getElementById("chatWindow");
+      const d = document.createElement("div");
+      d.className = "user-msg";
+      d.innerHTML = "<span>"+escapeHtml(text)+"</span>";
+      w.appendChild(d);
+      w.scrollTop = w.scrollHeight;
+    }
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])); }
+
+    function showTyping(ms=800){
+      const el = document.getElementById("typingIndicator");
+      if(!el) return Promise.resolve();
+      el.style.display='flex';
+      return new Promise(res=>setTimeout(()=>{ el.style.display='none'; res(); }, ms));
+    }
+
+    function speakText(text){
+      try{
+        if(!("speechSynthesis" in window)) return;
+        const utter = new SpeechSynthesisUtterance(String(text).replace(/<[^>]*>/g,""));
+        utter.rate = 1;
+        utter.pitch = 1;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utter);
+      }catch(e){ console.warn(e); }
+    }
+
+    function detectSymptomFromText(text){
+      const t = (text||"").toLowerCase();
+      // check keys with flexible matching
+      for(const k of Object.keys(SYMPTOMS)){
+        if(k === 'breath'){
+          if(t.includes('breath') || t.includes('breathing') || t.includes('short of breath') || t.includes('cannot breathe') ) return 'breath';
+        } else if(k === 'faint'){
+          if(t.includes('faint') || t.includes('fainted') || t.includes('loss of consciousness')) return 'faint';
+        } else if(t.includes(k)) return k;
+      }
+      return null;
+    }
+
+    async function sendMessageToBot(){
+      const input = document.getElementById("userMessage");
+      if(!input) return;
+      const msg = input.value.trim();
+      if(!msg) return;
+      addUserBubble(msg);
+      input.value = "";
+      // Show typing
+      await showTyping(600 + Math.min(1200, msg.length*8));
+      // detect symptom(s)
+      const sym = detectSymptomFromText(msg);
+      if(sym){
+        const entry = SYMPTOMS[sym];
+        if(entry && entry.emergency){
+          const html = `<strong>⚠️ EMERGENCY: ${sym.toUpperCase()}</strong><br>${escapeHtml(entry.advice)}<div style="margin-top:10px;display:flex;gap:8px;"><button onclick="emergencyCall()" style="flex:1;padding:10px;border-radius:8px;border:none;background:#d9534f;color:#fff;font-weight:700">🚑 Call Ambulance</button><button onclick="callCaregiver()" style="flex:1;padding:10px;border-radius:8px;border:none;background:#0b74e6;color:#fff;font-weight:700">📞 Call Caregiver</button></div>`;
+          addBotBubble(html);
+          speakText("This looks serious. Please call emergency services immediately.");
+          return;
+        } else {
+          const reply = `<strong>Symptom:</strong> ${escapeHtml(sym)}<br><strong>Advice:</strong> ${escapeHtml(entry.advice)}<br><strong>Suggested medicine:</strong> ${escapeHtml(entry.meds)}<div class="small-muted">If you feel worse, call the emergency button below.</div>`;
+          addBotBubble(reply);
+          speakText(`${sym}. ${entry.advice}`);
+          return;
+        }
+      }
+      // fallback human-like reply
+      const low = msg.toLowerCase();
+      let fallback = "Thanks — could you tell me the main symptom in one word, e.g., 'headache', 'fever', 'dizzy', 'cough'?";
+      if(low.includes("hello")||low.includes("hi")) fallback = "Hello! I'm here to help — tell me what's bothering you or tap the microphone to speak.";
+      if(low.includes("thank")) fallback = "You're welcome — glad to help. If it's urgent, press the Emergency button inside this chat.";
+      addBotBubble(escapeHtml(fallback));
+      speakText(fallback);
+    }
+
+    /* Voice recognition (safe, checks both APIs) */
+    function startVoiceInput(){
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if(!SpeechRec){
+        alert("Voice input not supported by this browser. Use Chrome/Edge.");
+        return;
+      }
+      const rec = new SpeechRec();
+      rec.lang = 'en-IN';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      // visually indicate listening
+      const voiceBtn = document.getElementById("voiceBtn");
+      const old = voiceBtn.innerText;
+      voiceBtn.innerText = "🎙️...";
+      rec.onresult = function(e){
+        const text = e.results[0][0].transcript;
+        document.getElementById("userMessage").value = text;
+      };
+      rec.onerror = function(ev){
+        console.warn("Voice error", ev);
+      };
+      rec.onend = function(){
+        voiceBtn.innerText = old;
+        // auto-send after recognition if input filled
+        const v = document.getElementById("userMessage").value.trim();
+        if(v) sendMessageToBot();
+      };
+      rec.start();
+    }
+
+    /* Emergency helpers */
+    function emergencyCall(){
+      // call ambulance
+      window.location.href = "tel:" + AMBULANCE_NUMBER;
+    }
+    function callCaregiver(){
+      // call caregiver
+      window.location.href = "tel:" + CAREGIVER_NUMBER;
+    }
+    function sendEmergencySms(){
+      // open SMS composer (mobile) — message includes basic info
+      const body = encodeURIComponent("Emergency! Please help. Patient may need urgent attention.");
+      window.location.href = `sms:${CAREGIVER_NUMBER}?body=${body}`;
+    }
+
+    /* Symptom chips initialization (tidy row) */
+    const chipsOrder = ["fever","headache","cold","cough","vomiting","dizziness","breath","chest pain","faint","arthritis","urine","confusion"];
+    function initChips(){
+      const container = document.getElementById("symptomChips");
+      if(!container) return;
+      container.innerHTML = "";
+      chipsOrder.forEach(k=>{
+        const label = (k === "breath")? "Breathing trouble" : (k==="faint"?"Fainting":(k==="urine"?"Urine issues": (k==="arthritis"?"Arthritis":(k==="confusion"?"Confusion":""+k))));
+        const btn = document.createElement("button");
+        btn.className = "chip";
+        btn.innerText = label;
+        btn.onclick = function(){
+          // put into input and send
+          document.getElementById("userMessage").value = label;
+          sendMessageToBot();
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    /* Open/close chat */
+    function openDoctorChat(){
+      const el = document.getElementById("doctorChat");
+      el.style.display = "flex";
+      el.setAttribute("aria-hidden","false");
+      document.getElementById("userMessage").focus();
+    }
+    function closeDoctorChat(){
+      const el = document.getElementById("doctorChat");
+      el.style.display = "none";
+      el.setAttribute("aria-hidden","true");
+    }
+
+    /* Init on DOM ready */
+    document.addEventListener('DOMContentLoaded', function(){
+      initChips();
+      loadData(); // load existing records and render charts if any
+      // wire send button to enhanced function (already inline)
+      document.getElementById("sendBtn")?.addEventListener('click', sendMessageToBot);
+      // ensure pressing enter sends message (already set on input)
+    });
+  </script>
+</body>
+</html>
