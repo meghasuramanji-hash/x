@@ -1,0 +1,23 @@
+{
+  "records1": [
+    {
+      "name": "Megha",
+      "bp": "120/80",
+      "sugar": 90,
+      "pulse": 70
+    },
+    {
+      "name": "Manya C",
+      "bp": "110/80",
+      "sugar": 80,
+      "pulse": 75
+    },
+    {
+      "name": "Manasa",
+      "bp": "90/80",
+      "sugar": 100,
+      "pulse": 85
+    }
+    
+  ]
+}
